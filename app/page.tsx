@@ -40,24 +40,8 @@ export default function Home() {
               marginBottom: "28px",
             }}
           >
-            Your Organization is Designed
-            <br />
-            for Humans Who Don&apos;t Exist
+            AI budgets are growing. Results aren&apos;t keeping up.
           </h1>
-
-          <p
-            className="animate-fade-up delay-200"
-            style={{
-              fontSize: "clamp(1rem, 2vw, 1.15rem)",
-              color: "rgba(255,255,255,0.65)",
-              maxWidth: "520px",
-              lineHeight: 1.65,
-              marginBottom: "12px",
-            }}
-          >
-            You design strategies, tools and processes for rational actors who
-            follow instructions.
-          </p>
 
           <p
             className="animate-fade-up delay-300"
@@ -66,41 +50,17 @@ export default function Home() {
               color: "rgba(255,255,255,0.65)",
               maxWidth: "520px",
               lineHeight: 1.65,
-              marginBottom: "12px",
-            }}
-          >
-            Real humans run on familiarity, social proof, and attention — not
-            logic.
-          </p>
-
-          <p
-            className="animate-fade-up delay-400"
-            style={{
-              fontSize: "clamp(1rem, 2vw, 1.15rem)",
-              color: "rgba(255,255,255,0.65)",
-              maxWidth: "520px",
-              lineHeight: 1.65,
               marginBottom: "44px",
             }}
           >
-            That&apos;s why adoption fails.
+            Most companies won&apos;t figure this out for years.
           </p>
 
           <Link
             href="/assessment"
             className="cta-button animate-fade-up delay-500"
           >
-            Take the 5-Minute Assessment
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M7 17L17 7M17 7H7M17 7V17" />
-            </svg>
+            Be the exception →
           </Link>
         </div>
       </section>
