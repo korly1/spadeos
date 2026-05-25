@@ -2,15 +2,24 @@
 
 import { useEffect, useRef } from "react";
 
+interface DendriteBranch {
+  angle: number;
+  length: number;
+  width: number;
+  curve: number;
+  children: DendriteBranch[];
+}
+
 interface Node {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  radius: number;
   opacity: number;
   pulsePhase: number;
   isHub: boolean;
+  rotation: number;
+  dendrites: DendriteBranch[];
 }
 
 interface Connection {
@@ -53,6 +62,40 @@ function curvePoint(
     x: u * u * ax + 2 * u * t * cx + t * t * bx,
     y: u * u * ay + 2 * u * t * cy + t * t * by,
   };
+}
+
+function generateSubBranches(
+  isHub: boolean,
+  parentLength: number,
+  depth: number
+): DendriteBranch[] {
+  if (depth <= 0) return [];
+
+  const count = 1 + Math.floor(Math.random() * (isHub ? 3 : 2));
+  return Array.from({ length: count }, () => {
+    const length = parentLength * (0.48 + Math.random() * 0.3);
+    return {
+      angle: (Math.random() - 0.5) * 1.8,
+      length,
+      width: Math.max(0.3, parentLength * 0.05 + Math.random() * 0.25),
+      curve: (Math.random() - 0.5) * length * 0.4,
+      children: generateSubBranches(isHub, length, depth - 1),
+    };
+  });
+}
+
+function generateDendriteTree(isHub: boolean): DendriteBranch[] {
+  const count = isHub ? 6 + Math.floor(Math.random() * 2) : 4 + Math.floor(Math.random() * 2);
+  return Array.from({ length: count }, (_, i) => {
+    const length = isHub ? 28 + Math.random() * 30 : 18 + Math.random() * 22;
+    return {
+      angle: (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.8,
+      length,
+      width: isHub ? 1.3 + Math.random() * 0.8 : 0.8 + Math.random() * 0.55,
+      curve: (Math.random() - 0.5) * length * 0.38,
+      children: generateSubBranches(isHub, length, isHub ? 2 : 1),
+    };
+  });
 }
 
 export default function NeuralCanvas() {
@@ -116,21 +159,96 @@ export default function NeuralCanvas() {
 
     const init = () => {
       resize();
-      const count = Math.floor((canvas.width * canvas.height) / 20000);
-      nodes = Array.from({ length: Math.max(count, 22) }, () => {
-        const isHub = Math.random() > 0.78;
+      const count = Math.floor((canvas.width * canvas.height) / 22000);
+      nodes = Array.from({ length: Math.max(count, 20) }, () => {
+        const isHub = Math.random() > 0.8;
         return {
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.22,
-          vy: (Math.random() - 0.5) * 0.22,
-          radius: isHub ? Math.random() * 1.8 + 2.4 : Math.random() * 1.2 + 1.2,
-          opacity: Math.random() * 0.35 + 0.35,
+          vx: (Math.random() - 0.5) * 0.2,
+          vy: (Math.random() - 0.5) * 0.2,
+          opacity: Math.random() * 0.3 + 0.4,
           pulsePhase: Math.random() * Math.PI * 2,
           isHub,
+          rotation: Math.random() * Math.PI * 2,
+          dendrites: generateDendriteTree(isHub),
         };
       });
       buildConnections();
+    };
+
+    const drawDendriteBranch = (
+      x: number,
+      y: number,
+      parentAngle: number,
+      branch: DendriteBranch,
+      alpha: number,
+      depth: number
+    ) => {
+      const angle = parentAngle + branch.angle;
+      const endX = x + Math.cos(angle) * branch.length;
+      const endY = y + Math.sin(angle) * branch.length;
+      const ctrlX = (x + endX) / 2 - Math.sin(angle) * branch.curve;
+      const ctrlY = (y + endY) / 2 + Math.cos(angle) * branch.curve;
+      const branchAlpha = alpha * (0.95 - depth * 0.1);
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+      const grad = ctx.createLinearGradient(x, y, endX, endY);
+      grad.addColorStop(0, `rgba(${TEAL_LIGHT}, ${branchAlpha * 0.95})`);
+      grad.addColorStop(0.55, `rgba(${TEAL}, ${branchAlpha * 0.7})`);
+      grad.addColorStop(1, `rgba(${TEAL_LIGHT}, ${branchAlpha * 0.35})`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = branch.width;
+      ctx.lineCap = "round";
+      ctx.stroke();
+
+      if (branch.children.length === 0) {
+        // Dendritic spine / terminal bouton
+        const spineGrd = ctx.createRadialGradient(endX, endY, 0, endX, endY, 2.8);
+        spineGrd.addColorStop(0, `rgba(${TEAL_LIGHT}, ${branchAlpha * 1.1})`);
+        spineGrd.addColorStop(1, `rgba(${TEAL}, 0)`);
+        ctx.beginPath();
+        ctx.arc(endX, endY, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = spineGrd;
+        ctx.fill();
+        return;
+      }
+
+      branch.children.forEach((child) => {
+        drawDendriteBranch(endX, endY, angle, child, alpha, depth + 1);
+      });
+    };
+
+    const drawDendriteArbor = (n: Node) => {
+      const pulse = Math.sin(n.pulsePhase) * 0.2 + 0.8;
+      const alpha = n.opacity * pulse;
+
+      n.dendrites.forEach((branch) => {
+        drawDendriteBranch(n.x, n.y, n.rotation, branch, alpha, 0);
+      });
+    };
+
+    const drawSoma = (n: Node) => {
+      const pulse = Math.sin(n.pulsePhase) * 0.15 + 0.85;
+      const alpha = n.opacity * pulse;
+      const somaR = n.isHub ? 2.2 : 1.6;
+
+      // Minimal nucleus — dendritic branches are the visual focus
+      const core = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, somaR * 2.5);
+      core.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.5})`);
+      core.addColorStop(0.45, `rgba(${TEAL_LIGHT}, ${alpha * 0.35})`);
+      core.addColorStop(1, `rgba(${TEAL}, 0)`);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, somaR * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = core;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, somaR, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${TEAL_LIGHT}, ${alpha * 0.75})`;
+      ctx.fill();
     };
 
     const drawConnection = (conn: Connection) => {
@@ -140,41 +258,48 @@ export default function NeuralCanvas() {
       const dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const strength = 1 - dist / MAX_DIST;
+      const len = dist || 1;
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
-      const len = dist || 1;
       const cx = mx + (-dy / len) * conn.curve;
       const cy = my + (dx / len) * conn.curve;
 
+      // Start/end slightly offset from soma center toward the partner
+      const startOffset = a.isHub ? 6 : 4;
+      const endOffset = b.isHub ? 6 : 4;
+      const ax = a.x + (dx / len) * startOffset;
+      const ay = a.y + (dy / len) * startOffset;
+      const bx = b.x - (dx / len) * endOffset;
+      const by = b.y - (dy / len) * endOffset;
+
       const baseAlpha = strength * 0.28 + 0.06;
 
-      // Dendrite shaft with glow
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.quadraticCurveTo(cx, cy, b.x, b.y);
-      const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(cx, cy, bx, by);
+      const grad = ctx.createLinearGradient(ax, ay, bx, by);
       grad.addColorStop(0, `rgba(${TEAL_LIGHT}, ${baseAlpha * 1.4})`);
       grad.addColorStop(0.5, `rgba(${TEAL}, ${baseAlpha * 0.65})`);
       grad.addColorStop(1, `rgba(${TEAL_LIGHT}, ${baseAlpha * 1.2})`);
       ctx.strokeStyle = grad;
-      ctx.lineWidth = 0.6 + strength * 0.5;
+      ctx.lineWidth = 0.55 + strength * 0.45;
       ctx.lineCap = "round";
       ctx.stroke();
 
-      // Synapse terminals at each end
-      [a, b].forEach((node, idx) => {
-        const t = idx === 0 ? 0.08 : 0.92;
-        const pt = curvePoint(a.x, a.y, b.x, b.y, conn.curve, t);
-        const grd = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, 4);
+      // Synapse terminals
+      [
+        [ax, ay],
+        [bx, by],
+      ].forEach(([px, py]) => {
+        const grd = ctx.createRadialGradient(px, py, 0, px, py, 3.5);
         grd.addColorStop(0, `rgba(${TEAL_LIGHT}, ${baseAlpha * 1.8})`);
         grd.addColorStop(1, `rgba(${TEAL}, 0)`);
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
         ctx.fillStyle = grd;
         ctx.fill();
       });
 
-      // Action potential pulse traveling along the axon
       if (conn.signalActive) {
         conn.signalPhase += conn.signalSpeed;
         if (conn.signalPhase >= 1) {
@@ -182,60 +307,20 @@ export default function NeuralCanvas() {
           conn.signalActive = Math.random() > 0.35;
         }
 
-        const pt = curvePoint(a.x, a.y, b.x, b.y, conn.curve, conn.signalPhase);
+        const pt = curvePoint(ax, ay, bx, by, conn.curve, conn.signalPhase);
         const pulseAlpha = Math.sin(conn.signalPhase * Math.PI) * 0.85 + 0.15;
-        const pulseGrd = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, 6);
+        const pulseGrd = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, 5);
         pulseGrd.addColorStop(0, `rgba(255, 255, 255, ${pulseAlpha * 0.9})`);
         pulseGrd.addColorStop(0.35, `rgba(${TEAL_LIGHT}, ${pulseAlpha * 0.7})`);
         pulseGrd.addColorStop(1, `rgba(${TEAL}, 0)`);
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
         ctx.fillStyle = pulseGrd;
         ctx.fill();
       } else if (Math.random() > 0.997) {
         conn.signalActive = true;
         conn.signalPhase = 0;
       }
-    };
-
-    const drawNode = (n: Node) => {
-      const pulse = Math.sin(n.pulsePhase) * 0.25 + 0.75;
-      const alpha = n.opacity * pulse;
-      const somaRadius = n.radius * (n.isHub ? 1.15 : 1);
-
-      // Outer membrane glow
-      const outer = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, somaRadius * 6);
-      outer.addColorStop(0, `rgba(${TEAL_LIGHT}, ${alpha * 0.35})`);
-      outer.addColorStop(0.45, `rgba(${TEAL}, ${alpha * 0.12})`);
-      outer.addColorStop(1, `rgba(${TEAL}, 0)`);
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, somaRadius * 6, 0, Math.PI * 2);
-      ctx.fillStyle = outer;
-      ctx.fill();
-
-      // Cell body ring
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, somaRadius + 0.8, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${TEAL_LIGHT}, ${alpha * 0.35})`;
-      ctx.lineWidth = 0.6;
-      ctx.stroke();
-
-      // Nucleus / soma core
-      const core = ctx.createRadialGradient(
-        n.x - somaRadius * 0.2,
-        n.y - somaRadius * 0.2,
-        0,
-        n.x,
-        n.y,
-        somaRadius
-      );
-      core.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.55})`);
-      core.addColorStop(0.4, `rgba(${TEAL_LIGHT}, ${alpha})`);
-      core.addColorStop(1, `rgba(${TEAL}, ${alpha * 0.6})`);
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, somaRadius, 0, Math.PI * 2);
-      ctx.fillStyle = core;
-      ctx.fill();
     };
 
     const draw = () => {
@@ -245,15 +330,18 @@ export default function NeuralCanvas() {
       nodes.forEach((n) => {
         n.x += n.vx;
         n.y += n.vy;
-        if (n.x < 20 || n.x > canvas.width - 20) n.vx *= -1;
-        if (n.y < 20 || n.y > canvas.height - 20) n.vy *= -1;
-        n.pulsePhase += n.isHub ? 0.018 : 0.025;
+        if (n.x < 30 || n.x > canvas.width - 30) n.vx *= -1;
+        if (n.y < 30 || n.y > canvas.height - 30) n.vy *= -1;
+        n.pulsePhase += n.isHub ? 0.016 : 0.022;
+        n.rotation += n.isHub ? 0.0004 : 0.0008;
       });
 
       if (frame % REBUILD_INTERVAL === 0) buildConnections();
 
+      // Layer order: dendrite arbors → axons → soma bodies
+      nodes.forEach(drawDendriteArbor);
       connections.forEach(drawConnection);
-      nodes.forEach(drawNode);
+      nodes.forEach(drawSoma);
 
       animationId = requestAnimationFrame(draw);
     };
